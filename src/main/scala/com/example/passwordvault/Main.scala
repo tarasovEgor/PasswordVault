@@ -1,33 +1,48 @@
 package com.example.passwordvault
 
-import cats.effect.{ExitCode, IO, IOApp}
-import cats.syntax.all.*
+import cats.effect.{IO, IOApp, Resource}
 import com.comcast.ip4s.*
+import com.example.passwordvault.config.AppConfig
+import com.example.passwordvault.crypto.Crypto
+import com.example.passwordvault.db.Database
 import com.example.passwordvault.http.{HealthRoutes, PasswordRoutes}
+import com.example.passwordvault.repository.PasswordRepository
 import com.example.passwordvault.service.PasswordService
 import org.http4s.ember.server.EmberServerBuilder
-import org.http4s.implicits.*
+import org.http4s.server.Router
 
-object Main extends IOApp {
+object Main extends IOApp.Simple {
 
-  override def run(args: List[String]): IO[ExitCode] =
-    PasswordService.inMemory.flatMap { passwordService =>
-      val httpApp =
-        (
-          HealthRoutes.routes <+>
-            PasswordRoutes.routes(passwordService)
-          ).orNotFound
+  override def run: IO[Unit] =
+    AppConfig.load.flatMap { config =>
+        {
+          val appResource =
+            for {
+              crypto <- Resource.eval(Crypto.aesGcm(config.masterKeyBase64))
 
-      EmberServerBuilder
-        .default[IO]
-        .withHost(ipv4"0.0.0.0")
-        .withPort(port"8080")
-        .withHttpApp(httpApp)
-        .build
-        .use { _ =>
-          IO.println("Password Vault service started on http://localhost:8080") >>
-            IO.never
+              transactor <- Database.transactor(config.database)
+
+              repository = PasswordRepository.postgres[IO](transactor)
+
+              passwordService = PasswordService.live(
+                repository = repository,
+                crypto = crypto
+              )
+
+              httpApp = Router(
+                "/" -> HealthRoutes.routes,
+                "/" -> PasswordRoutes.routes(passwordService)
+              ).orNotFound
+
+              server <- EmberServerBuilder
+                .default[IO]
+                .withHost(host"0.0.0.0")
+                .withPort(port"8080")
+                .withHttpApp(httpApp)
+                .build
+            } yield server
+
+          appResource.useForever
         }
-        .as(ExitCode.Success)
     }
 }

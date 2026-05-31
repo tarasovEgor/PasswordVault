@@ -1,6 +1,6 @@
 package com.example.passwordvault.domain
 
-import io.circe.{Decoder, Encoder}
+import io.circe.{Decoder, Encoder, HCursor}
 import io.circe.generic.semiauto.*
 
 final case class PasswordEntry(
@@ -33,7 +33,33 @@ final case class UpdatePasswordRequest(
                                       )
 
 object UpdatePasswordRequest {
-  given Decoder[UpdatePasswordRequest] = deriveDecoder[UpdatePasswordRequest]
+
+  given Decoder[UpdatePasswordRequest] = Decoder.instance { cursor =>
+    val commentCursor = cursor.downField("comment")
+
+    val decodedComment: Decoder.Result[Option[Option[String]]] =
+      if (!commentCursor.succeeded) {
+        Right(None)
+      } else {
+        commentCursor.focus match {
+          case Some(json) if json.isNull =>
+            Right(Some(None))
+
+          case _ =>
+            commentCursor.as[String].map(value => Some(Some(value)))
+        }
+      }
+
+    for {
+      name <- cursor.get[Option[String]]("name")
+      password <- cursor.get[Option[String]]("password")
+      comment <- decodedComment
+    } yield UpdatePasswordRequest(
+      name = name,
+      password = password,
+      comment = comment
+    )
+  }
 }
 
 final case class PasswordRecord(

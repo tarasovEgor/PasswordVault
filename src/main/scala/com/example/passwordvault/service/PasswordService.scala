@@ -1,9 +1,13 @@
 package com.example.passwordvault.service
 
-import cats.effect.{Clock, IO, Ref}
+import cats.effect.IO
+import cats.syntax.traverse.*
+import com.example.passwordvault.crypto.Crypto
 import com.example.passwordvault.domain.*
+import com.example.passwordvault.repository.PasswordRepository
 
 trait PasswordService {
+
   def create(request: CreatePasswordRequest): IO[PasswordEntry]
 
   def list: IO[List[PasswordEntry]]
@@ -17,94 +21,75 @@ trait PasswordService {
 
 object PasswordService {
 
-  private final case class State(
-                                  nextId: Long,
-                                  items: Map[Long, PasswordEntry]
-                                )
+  def live(
+            repository: PasswordRepository[IO],
+            crypto: Crypto
+          ): PasswordService =
+    new PasswordService {
 
-  def inMemory: IO[PasswordService] =
-    Ref.of[IO, State](State(nextId = 1L, items = Map.empty)).map { ref =>
-      new PasswordService {
+      override def create(request: CreatePasswordRequest): IO[PasswordEntry] =
+        for {
+          now <- nowSeconds
+          encryptedPassword <- crypto.encrypt(request.password)
 
-        override def create(request: CreatePasswordRequest): IO[PasswordEntry] =
-          currentTimestamp.flatMap { now =>
-            ref.modify { state =>
-              val entry = PasswordEntry(
-                id = state.nextId,
-                name = request.name,
-                password = request.password,
-                comment = request.comment,
-                created = now,
-                deleted = None
-              )
+          record <- repository.create(
+            name = request.name,
+            encryptedPassword = encryptedPassword,
+            comment = request.comment,
+            created = now
+          )
 
-              val updatedState = state.copy(
-                nextId = state.nextId + 1,
-                items = state.items + (entry.id -> entry)
-              )
+          entry <- toEntry(record)
+        } yield entry
 
-              updatedState -> entry
-            }
-          }
+      override def list: IO[List[PasswordEntry]] =
+        repository.list.flatMap(_.traverse(toEntry))
 
-        override def list: IO[List[PasswordEntry]] =
-          ref.get.map { state =>
-            state.items.values
-              .filter(_.deleted.isEmpty)
-              .toList
-              .sortBy(_.id)
-          }
+      override def get(id: Long): IO[Option[PasswordEntry]] =
+        repository.get(id).flatMap {
+          case Some(record) =>
+            toEntry(record).map(Some(_))
 
-        override def get(id: Long): IO[Option[PasswordEntry]] =
-          ref.get.map { state =>
-            state.items.get(id).filter(_.deleted.isEmpty)
-          }
+          case None =>
+            IO.pure(None)
+        }
 
-        override def update(id: Long, request: UpdatePasswordRequest): IO[Option[PasswordEntry]] =
-          ref.modify { state =>
-            state.items.get(id).filter(_.deleted.isEmpty) match {
-              case Some(current) =>
-                val updated = current.copy(
-                  name = request.name.getOrElse(current.name),
-                  password = request.password.getOrElse(current.password),
-                  comment = request.comment match {
-                    case Some(newComment) => newComment
-                    case None             => current.comment
-                  }
-                )
+      override def update(
+                           id: Long,
+                           request: UpdatePasswordRequest
+                         ): IO[Option[PasswordEntry]] =
+        for {
+          encryptedPassword <- request.password.traverse(crypto.encrypt)
 
-                val updatedState = state.copy(
-                  items = state.items.updated(id, updated)
-                )
+          updatedRecord <- repository.update(
+            id = id,
+            name = request.name,
+            encryptedPassword = encryptedPassword,
+            comment = request.comment
+          )
 
-                updatedState -> Some(updated)
+          updatedEntry <- updatedRecord.traverse(toEntry)
+        } yield updatedEntry
 
-              case None =>
-                state -> None
-            }
-          }
+      override def delete(id: Long): IO[Boolean] =
+        for {
+          now <- nowSeconds
+          deleted <- repository.delete(id = id, deleted = now)
+        } yield deleted
 
-        override def delete(id: Long): IO[Boolean] =
-          currentTimestamp.flatMap { now =>
-            ref.modify { state =>
-              state.items.get(id).filter(_.deleted.isEmpty) match {
-                case Some(current) =>
-                  val deleted = current.copy(deleted = Some(now))
+      private def toEntry(record: PasswordRecord): IO[PasswordEntry] =
+        crypto.decrypt(record.encryptedPassword).map { password =>
+          PasswordEntry(
+            id = record.id,
+            name = record.name,
+            password = password,
+            comment = record.comment,
+            created = record.created,
+            deleted = record.deleted
+          )
+        }
 
-                  val updatedState = state.copy(
-                    items = state.items.updated(id, deleted)
-                  )
-
-                  updatedState -> true
-
-                case None =>
-                  state -> false
-              }
-            }
-          }
-
-        private def currentTimestamp: IO[Long] =
-          Clock[IO].realTime.map(_.toSeconds)
-      }
+      private def nowSeconds: IO[Long] =
+        IO.realTime.map(_.toSeconds)
     }
 }

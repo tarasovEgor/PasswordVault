@@ -40,3 +40,12 @@ lazy val root = (project in file("."))
       "-unchecked"
     )
   )
+
+Compile / run / fork := true
+
+Compile / run / javaOptions ++= Seq(
+  "-Djava.net.useSystemProxies=false",
+  "-Dhttp.proxyHost=",
+  "-Dhttps.proxyHost=",
+  "-DsocksProxyHost="
+)
