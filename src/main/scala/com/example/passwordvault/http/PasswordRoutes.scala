@@ -9,7 +9,7 @@ import org.http4s.MediaType
 import org.http4s.circe.CirceEntityCodec.*
 import org.http4s.dsl.io.*
 import org.http4s.dsl.impl.{OptionalQueryParamDecoderMatcher, QueryParamDecoderMatcher}
-import org.http4s.EntityEncoder
+import org.http4s.{EntityEncoder, EntityDecoder}
 import org.typelevel.ci.CIStringSyntax
 
 object SearchQueryMatcher extends QueryParamDecoderMatcher[String]("search")
@@ -17,7 +17,6 @@ object ExactMatcher extends OptionalQueryParamDecoderMatcher[Boolean]("exact")
 
 object PasswordRoutes {
 
-  // явный string encoder — не даёт circe перехватить строку
   private given stringEncoder: EntityEncoder[IO, String] =
     EntityEncoder.stringEncoder[IO]
 
@@ -78,9 +77,12 @@ object PasswordRoutes {
 
       case request @ POST -> Root / "passwords" / "import" =>
         for {
-          csvContent <- request.as[String]
-          imported   <- service.importCsv(csvContent)
-          response   <- Ok(imported)
+          csvContent <- EntityDecoder.text[IO].decode(request, strict = false).value.flatMap {
+            case Right(text) => IO.pure(text)
+            case Left(err)   => IO.raiseError(err)
+          }
+          imported <- service.importCsv(csvContent)
+          response <- Ok(imported)
         } yield response
     }
 }
