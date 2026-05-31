@@ -36,7 +36,7 @@ export DB_PASSWORD="password_vault"
 export MASTER_KEY_BASE64="$(openssl rand -base64 32)"
 ```
 
-> Keep the same `MASTER_KEY_BASE64` between restarts — it is used to encrypt and decrypt stored passwords. If the key is lost, existing passwords cannot be decrypted.
+> Keep the same `MASTER_KEY_BASE64` between restarts — it is used to encrypt and decrypt stored passwords. If the key changes, existing entries cannot be decrypted.
 
 ### 4. Run the application
 
@@ -44,7 +44,7 @@ export MASTER_KEY_BASE64="$(openssl rand -base64 32)"
 sbt run
 ```
 
-Service starts at `http://localhost:8080`.  
+Service starts at `http://localhost:8080`.
 Swagger UI is available at `http://localhost:8080/docs`.
 
 ## API Reference
@@ -83,11 +83,6 @@ curl -X POST http://localhost:8080/passwords \
 curl http://localhost:8080/passwords
 ```
 
-**Get by ID**
-```bash
-curl http://localhost:8080/passwords/1
-```
-
 **Search partial**
 ```bash
 curl "http://localhost:8080/passwords?search=git"
@@ -96,6 +91,11 @@ curl "http://localhost:8080/passwords?search=git"
 **Search exact**
 ```bash
 curl "http://localhost:8080/passwords?search=GitHub&exact=true"
+```
+
+**Get by ID**
+```bash
+curl http://localhost:8080/passwords/1
 ```
 
 **Update**
@@ -113,7 +113,6 @@ curl -X DELETE http://localhost:8080/passwords/1
 **Export CSV**
 ```bash
 curl http://localhost:8080/passwords/export -o passwords.csv
-cat passwords.csv
 ```
 
 **Import CSV**
@@ -122,23 +121,3 @@ curl -X POST http://localhost:8080/passwords/import \
   -H "Content-Type: text/plain" \
   --data-binary @passwords.csv
 ```
-
-## Data Model
-
-```json
-{
-  "id": 1,
-  "name": "GitHub",
-  "password": "secret123",
-  "comment": "dev account",
-  "created": 1780253812,
-  "deleted": null
-}
-```
-
-- `id` — auto-incremented identifier
-- `name` — service name
-- `password` — stored encrypted (AES-GCM), returned decrypted via API
-- `comment` — optional note
-- `created` — Unix timestamp (seconds)
-- `deleted` — Unix timestamp if soft-deleted, otherwise null

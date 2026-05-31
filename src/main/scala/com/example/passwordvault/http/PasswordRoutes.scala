@@ -9,12 +9,17 @@ import org.http4s.MediaType
 import org.http4s.circe.CirceEntityCodec.*
 import org.http4s.dsl.io.*
 import org.http4s.dsl.impl.{OptionalQueryParamDecoderMatcher, QueryParamDecoderMatcher}
+import org.http4s.EntityEncoder
 import org.typelevel.ci.CIStringSyntax
 
 object SearchQueryMatcher extends QueryParamDecoderMatcher[String]("search")
 object ExactMatcher extends OptionalQueryParamDecoderMatcher[Boolean]("exact")
 
 object PasswordRoutes {
+
+  // явный string encoder — не даёт circe перехватить строку
+  private given stringEncoder: EntityEncoder[IO, String] =
+    EntityEncoder.stringEncoder[IO]
 
   def routes(service: PasswordService): HttpRoutes[IO] =
     HttpRoutes.of[IO] {
@@ -27,15 +32,16 @@ object PasswordRoutes {
         } yield response
 
       case GET -> Root / "passwords" / "export" =>
-        service.exportCsv.map { csv =>
-          Response[IO]()
-            .withEntity(csv)
-            .withContentType(`Content-Type`(MediaType.text.csv))
-            .putHeaders(
-              org.http4s.headers.`Content-Disposition`(
-                "attachment",
-                Map(ci"filename" -> "passwords.csv")
-              )
+        service.exportCsv.flatMap { csv =>
+          Ok(csv)
+            .map(
+              _.withContentType(`Content-Type`(MediaType.text.csv))
+                .putHeaders(
+                  org.http4s.headers.`Content-Disposition`(
+                    "attachment",
+                    Map(ci"filename" -> "passwords.csv")
+                  )
+                )
             )
         }
 
