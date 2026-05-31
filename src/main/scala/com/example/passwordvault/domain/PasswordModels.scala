@@ -35,3 +35,12 @@ final case class UpdatePasswordRequest(
 object UpdatePasswordRequest {
   given Decoder[UpdatePasswordRequest] = deriveDecoder[UpdatePasswordRequest]
 }
+
+final case class PasswordRecord(
+                                 id: Long,
+                                 name: String,
+                                 encryptedPassword: String,
+                                 comment: Option[String],
+                                 created: Long,
+                                 deleted: Option[Long]
+                               )
