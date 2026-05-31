@@ -36,7 +36,7 @@ export DB_PASSWORD="password_vault"
 export MASTER_KEY_BASE64="$(openssl rand -base64 32)"
 ```
 
-> ⚠️ Keep the same `MASTER_KEY_BASE64` between restarts — it is used to encrypt and decrypt stored passwords.
+> Keep the same `MASTER_KEY_BASE64` between restarts — it is used to encrypt and decrypt stored passwords.
 
 ### 4. Run the application
 
