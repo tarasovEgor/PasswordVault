@@ -10,6 +10,7 @@ import com.example.passwordvault.repository.PasswordRepository
 import com.example.passwordvault.service.PasswordService
 import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.server.Router
+import com.example.passwordvault.http.SwaggerRoutes
 
 object Main extends IOApp.Simple {
 
@@ -31,7 +32,8 @@ object Main extends IOApp.Simple {
 
               httpApp = Router(
                 "/" -> HealthRoutes.routes,
-                "/" -> PasswordRoutes.routes(passwordService)
+                "/" -> PasswordRoutes.routes(passwordService),
+                "/" -> SwaggerRoutes.routes
               ).orNotFound
 
               server <- EmberServerBuilder

@@ -31,7 +31,12 @@ lazy val root = (project in file("."))
       "org.tpolecat" %% "doobie-hikari"   % doobieVersion,
 
       // Logging
-      "ch.qos.logback" % "logback-classic" % "1.5.33"
+      "ch.qos.logback" % "logback-classic" % "1.5.33",
+
+      // Swagger-UI
+      "com.softwaremill.sttp.tapir" %% "tapir-http4s-server"     % "1.11.7",
+      "com.softwaremill.sttp.tapir" %% "tapir-swagger-ui-bundle"  % "1.11.7",
+      "com.softwaremill.sttp.tapir" %% "tapir-json-circe"         % "1.11.7",
     ),
 
     scalacOptions ++= Seq(

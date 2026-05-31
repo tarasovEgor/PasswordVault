@@ -4,8 +4,14 @@ import cats.effect.IO
 import com.example.passwordvault.domain.*
 import com.example.passwordvault.service.PasswordService
 import org.http4s.HttpRoutes
+import org.http4s.headers.`Content-Type`
+import org.http4s.MediaType
 import org.http4s.circe.CirceEntityCodec.*
 import org.http4s.dsl.io.*
+import org.http4s.dsl.impl.{OptionalQueryParamDecoderMatcher, QueryParamDecoderMatcher}
+
+object SearchQueryMatcher extends QueryParamDecoderMatcher[String]("search")
+object ExactMatcher extends OptionalQueryParamDecoderMatcher[Boolean]("exact")
 
 object PasswordRoutes {
 
@@ -55,5 +61,20 @@ object PasswordRoutes {
           case false =>
             NotFound(s"Password entry with id=$id was not found")
         }
+
+      case GET -> Root / "passwords" :? SearchQueryMatcher(search) +& ExactMatcher(exact) =>
+        service.search(search, exact.getOrElse(false)).flatMap(Ok(_))
+
+      case GET -> Root / "passwords" / "export" =>
+        service.exportCsv.flatMap { csv =>
+          Ok(csv).map(_.withContentType(`Content-Type`(MediaType.text.csv)))
+        }
+
+      case request@POST -> Root / "passwords" / "import" =>
+        for {
+          csvContent <- request.as[String]
+          imported <- service.importCsv(csvContent)
+          response <- Ok(imported)
+        } yield response  
     }
 }

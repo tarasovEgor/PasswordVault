@@ -17,6 +17,12 @@ trait PasswordService {
   def update(id: Long, request: UpdatePasswordRequest): IO[Option[PasswordEntry]]
 
   def delete(id: Long): IO[Boolean]
+
+  def search(query: String, exact: Boolean): IO[List[PasswordEntry]]
+
+  def exportCsv: IO[String]
+
+  def importCsv(csvContent: String): IO[List[PasswordEntry]]
 }
 
 object PasswordService {
@@ -76,6 +82,31 @@ object PasswordService {
           now <- nowSeconds
           deleted <- repository.delete(id = id, deleted = now)
         } yield deleted
+
+      override def search(query: String, exact: Boolean): IO[List[PasswordEntry]] =
+        repository.search(query, exact).flatMap(_.traverse(toEntry))
+
+      override def exportCsv: IO[String] =
+        list.map { entries =>
+          val header = "id,name,password,comment,created"
+          val rows = entries.map { e =>
+            val comment = e.comment.getOrElse("")
+            s"${e.id},${e.name},${e.password},$comment,${e.created}"
+          }
+          (header :: rows).mkString("\n")
+        }
+
+      override def importCsv(csvContent: String): IO[List[PasswordEntry]] =
+        val lines = csvContent.split("\n").toList.drop(1)
+        lines.traverse { line =>
+          val cols = line.split(",", -1)
+          val request = CreatePasswordRequest(
+            name = cols(1),
+            password = cols(2),
+            comment = if cols(3).isEmpty then None else Some(cols(3))
+          )
+          create(request)
+        }
 
       private def toEntry(record: PasswordRecord): IO[PasswordEntry] =
         crypto.decrypt(record.encryptedPassword).map { password =>

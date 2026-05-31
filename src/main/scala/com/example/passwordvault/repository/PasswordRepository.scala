@@ -27,6 +27,8 @@ trait PasswordRepository[F[_]] {
             ): F[Option[PasswordRecord]]
 
   def delete(id: Long, deleted: Long): F[Boolean]
+
+  def search(query: String, exact: Boolean): F[List[PasswordRecord]]
 }
 
 object PasswordRepository {
@@ -142,5 +144,19 @@ object PasswordRepository {
           .run
           .transact(xa)
           .map(_ > 0)
+
+      override def search(query: String, exact: Boolean): F[List[PasswordRecord]] =
+        val pattern = if exact then query else s"%$query%"
+        val condition = if exact then fr"name = $query" else fr"name ILIKE $pattern"
+
+        (fr"""
+          SELECT id, name, encrypted_password, comment, created, deleted
+          FROM password_entries
+          WHERE deleted IS NULL
+          AND """ ++ condition ++ fr"ORDER BY id ASC")
+          .query[Row]
+          .map(toRecord)
+          .to[List]
+          .transact(xa)  
     }
 }
